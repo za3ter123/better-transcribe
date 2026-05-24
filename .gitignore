@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+
+# Whisper model cache / scratch
+*.wav
+*.mp3
+*.m4a
+*.webm
+tests/fixtures/*.wav
+!tests/fixtures/*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local agent/hook state (not part of the project)
+.claude/

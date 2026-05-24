@@ -1,0 +1,16 @@
+Over the last four months or so, Claude Code's creator has shared probably dozens of different rules that he follows in his own workflows to build Claude Code itself.
+So not what Anthropic wants you to do or what people on Twitter think you should do, but what he actually does himself.
+So I picked out 15 of them that I think are the best bang for your buck, particularly if you're a vibe coder or vibe engineer or you use Claude Code in like day-to-day type of work.
+So we're going to go through each one, talk about why he uses it specifically, and then I will show you how to actually implement it for yourself.
+Starting with using Chrome as a verification step for all front-end work.
+So this was actually listed as one of his highest impact things that you can do to actually improve the performance of Claude Code.
+And so the rationale behind this is that if you had to go actually ask a human to build a website but told them that they couldn't actually use the browser,
+how good would the actual result look?
+In the end, probably not good.
+And it works the same way.
+So if we give our coding model access to the browser, it can write the code and then iterate until the thing actually looks good.
+And so the way that you do this is actually pretty simple.
+All you need to do when you kick off Claude is type in dash dash Chrome, and that's going to open up Claude Code with access to Chrome.
+So let's say we're inside of an app, and I really don't like how when I click on the user's profile down here, it pops up in this modal.
+And I would rather have this be...
+like a tradi
