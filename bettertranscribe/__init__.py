@@ -7,6 +7,6 @@ yt-dlp can fetch; for YouTube videos that are blocked, it falls back to a
 captions relay (clearly labelled as lower quality).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["__version__"]

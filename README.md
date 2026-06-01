@@ -28,6 +28,8 @@ better-transcribe    :  Claude Code is a tool by Anthropic for --Chrome work.
   pyannote (opt-in extra).
 - **Cross-platform.** CPU everywhere; CUDA on NVIDIA (Windows/Linux); an
   Apple-Silicon backend via `mlx-whisper` when installed.
+- **A searchable transcript library.** `--save` files each transcript as markdown; `recall` and
+  `library` pull past transcripts back by keyword + tags, just when you need them.
 
 ## Install
 
@@ -79,6 +81,29 @@ betterscribe foreign.mp3 --lang auto              # auto-detect language
 | `--hf-token` | HuggingFace token for diarization |
 | `--cookies-from-browser` | Use a browser's cookies for gated URLs (`chrome`/`edge`/`firefox`/…) |
 | `--no-captions-fallback` | Don't relay captions when YouTube audio is blocked |
+| `--save` | Remember this transcript in the searchable library |
+| `--title`, `--tags` | Title / comma-separated tags for the saved transcript |
+
+## Remember everything you transcribe
+
+Transcripts are only useful if you can find them again. Add `--save` and the transcript is filed in
+a local **library** — one markdown file with frontmatter (source, title, date, model, tags). Later,
+**pull** exactly the ones you need with keyword + metadata search. No database, no server; just a
+folder of markdown you also own outside this tool.
+
+```bash
+betterscribe "https://youtu.be/TIw1P4qVT8g" --save --tags memory,rag   # transcribe AND remember
+betterscribe library                                                   # what's in the library
+betterscribe recall "four levels of memory"                            # find it again
+betterscribe recall "agents" --tag claude-code --since 2026-01-01      # filter, then read
+betterscribe recall "rag is dead" --full                               # print the top match in full
+```
+
+`recall` returns **pointers** (title, source, path, a snippet) ranked by relevance — you open or
+`--full` the one you want. It's a pull, by design: you decide when to load a transcript into context
+instead of dumping the whole archive in. `recall` and `library` work even without the ASR
+dependencies installed, and the store location is configurable with `$BETTERTRANSCRIBE_LIBRARY`
+(default `~/.better-transcribe/library`).
 
 ## Speed
 

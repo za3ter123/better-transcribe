@@ -8,11 +8,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import __version__
-from .asr import transcribe
-from .fetch import resolve
-from .formats import render
-from .postprocess import collapse_repetitions
+from . import __version__, library
+
+# Heavy imports (faster-whisper via .asr) are deferred into run() so that the
+# `recall` / `library` subcommands work without the ASR dependencies installed.
 
 # Windows consoles default to cp1252 and choke on em-dashes / non-Latin text.
 for _stream in (sys.stdout, sys.stderr):
@@ -49,8 +48,22 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Browser to pull cookies from for gated URLs (chrome/edge/firefox/...)")
     p.add_argument("--no-captions-fallback", action="store_true",
                    help="Don't fall back to the captions relay when YT audio is blocked")
+    lib = p.add_argument_group("transcript library")
+    lib.add_argument("--save", action="store_true",
+                     help="Remember this transcript in the searchable library (recall it later)")
+    lib.add_argument("--title", help="Title for the saved transcript (default: the source)")
+    lib.add_argument("--tags", help="Comma-separated tags for the saved transcript")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
+
+
+def _save_to_library(text: str, args: argparse.Namespace, source_label: str) -> None:
+    tags = [t.strip() for t in (args.tags or "").split(",") if t.strip()]
+    path = library.save(
+        text, source=source_label, title=args.title,
+        model=getattr(args, "model", ""), lang=getattr(args, "lang", ""), tags=tags,
+    )
+    print(f"Saved to library: {path}", file=sys.stderr)
 
 
 def _emit(text: str, out: str | None, what: str) -> None:
@@ -75,6 +88,11 @@ def _handle_captions(text: str, args: argparse.Namespace, label: str) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    from .asr import transcribe
+    from .fetch import resolve
+    from .formats import render
+    from .postprocess import collapse_repetitions
+
     lang = None if args.lang.lower() == "auto" else args.lang
     with tempfile.TemporaryDirectory(prefix="betterscribe-") as td:
         result = resolve(
@@ -84,6 +102,8 @@ def run(args: argparse.Namespace) -> int:
         )
         if result.kind == "captions":
             _handle_captions(result.captions_text or "", args, result.source_label)
+            if args.save and result.captions_text:
+                _save_to_library(result.captions_text, args, result.source_label)
             return 0
 
         audio_path = str(result.audio_path)
@@ -109,11 +129,79 @@ def run(args: argparse.Namespace) -> int:
 
     text = render(segments, args.format, timestamps=args.timestamps,
                   reflow=not args.no_reflow, meta=meta)
+    if args.save:
+        lib_text = text if args.format == "text" else render(
+            segments, "text", timestamps=False, reflow=True, meta=meta)
+        _save_to_library(lib_text, args, result.source_label)
     _emit(text, args.out, f"{args.format} transcript ({len(segments)} segments)")
     return 0
 
 
+def _cmd_recall(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        prog="betterscribe recall",
+        description="Search your saved transcripts and pull just the ones you need.",
+    )
+    p.add_argument("query", nargs="?", default="", help="Words to search for")
+    p.add_argument("--tag", help="Only transcripts with this tag (comma-separated)")
+    p.add_argument("--source", help="Only transcripts whose source contains this text")
+    p.add_argument("--since", help="Only transcripts created on/after YYYY-MM-DD")
+    p.add_argument("--limit", type=int, default=8, help="Max results")
+    p.add_argument("--full", action="store_true", help="Print the full text of the top match")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+    a = p.parse_args(argv)
+    results = library.search(a.query, tag=a.tag, source=a.source, since=a.since, limit=a.limit)
+    if a.json:
+        print(json.dumps(
+            [{"id": n.id, "title": n.title, "source": n.source, "created": n.created,
+              "score": s, "path": str(n.path)} for n, s in results],
+            ensure_ascii=False, indent=2))
+        return 0
+    if not results:
+        print("No matching transcripts. (Transcribe with --save to build the library.)")
+        return 0
+    if a.full:
+        print(results[0][0].path.read_text(encoding="utf-8"))
+        return 0
+    for note, score in results:
+        tags = " ".join("#" + t for t in note.tags)
+        print(f"\n  {note.title}  ({note.created}{'  ' + tags if tags else ''})  [score {score}]")
+        print(f"  {note.path}")
+        print(f"    {library.snippet(note, a.query)}")
+    print(f"\n{len(results)} transcript(s). Open a path or re-run with --full — pull, don't auto-load.")
+    return 0
+
+
+def _cmd_library(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        prog="betterscribe library",
+        description="Show what's in your transcript library.",
+    )
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+    a = p.parse_args(argv)
+    s = library.stats()
+    notes = s["notes"]  # type: ignore[index]
+    if a.json:
+        print(json.dumps(
+            {"dir": s["dir"], "count": s["count"], "tags": s["tags"],
+             "notes": [{"id": n.id, "title": n.title, "created": n.created} for n in notes]},
+            ensure_ascii=False, indent=2))
+        return 0
+    print(f"library: {s['dir']}")
+    print(f"  transcripts: {s['count']}")
+    top = list(s["tags"].items())[:12]  # type: ignore[union-attr]
+    print(f"  tags: {len(s['tags'])}  ({'  '.join(f'#{t}:{c}' for t, c in top) or '—'})")  # type: ignore[arg-type]
+    for n in notes[-15:]:
+        print(f"    {n.created}  {n.title}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "recall":
+        return _cmd_recall(argv[1:])
+    if argv and argv[0] in ("library", "lib"):
+        return _cmd_library(argv[1:])
     args = build_parser().parse_args(argv)
     try:
         return run(args)
